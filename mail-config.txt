@@ -1,0 +1,30 @@
+Configuration email pour Parasel-Bio
+=====================================
+
+Ajoutez ces lignes à votre fichier .env :
+
+# Configuration SMTP (Gmail)
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=votre-email@gmail.com
+MAIL_PASSWORD=votre-mot-de-passe-application
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=votre-email@gmail.com
+MAIL_FROM_NAME="Parasel-Bio"
+
+# Configuration SMTP (Outlook/Hotmail)
+# MAIL_MAILER=smtp
+# MAIL_HOST=smtp-mail.outlook.com
+# MAIL_PORT=587
+# MAIL_USERNAME=votre-email@outlook.com
+# MAIL_PASSWORD=votre-mot-de-passe
+# MAIL_ENCRYPTION=tls
+# MAIL_FROM_ADDRESS=votre-email@outlook.com
+# MAIL_FROM_NAME="Parasel-Bio"
+
+Instructions :
+1. Copiez la configuration souhaitée dans votre fichier .env
+2. Remplacez les valeurs par vos vraies informations
+3. Pour Gmail, utilisez un "mot de passe d'application" (pas votre mot de passe normal)
+4. Exécutez : php artisan config:clear
