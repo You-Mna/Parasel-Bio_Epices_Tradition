@@ -66,11 +66,7 @@ class CartController extends Controller
 
     public function add(Request $request, Product $product): RedirectResponse
     {
-        // Vérifier si l'utilisateur est connecté
-        if (!Auth::check()) {
-            return redirect()->route('login.show')->with('message', 'Veuillez vous connecter pour ajouter des produits au panier.');
-        }
-        
+        // Accepte invités (session) et utilisateurs connectés (DB)
         $validated = $request->validate([
             'quantity' => 'nullable|integer|min:1',
             'variant_price' => 'nullable|numeric|min:0',
@@ -80,9 +76,6 @@ class CartController extends Controller
         $qty = $validated['quantity'] ?? 1;
         $variantPrice = $validated['variant_price'] ?? $product->price;
         $variantSize = $validated['variant_size'] ?? '';
-        
-        
-        
         
         // Déterminer le stock disponible (variante ou produit principal)
         $availableStock = $product->stock;
@@ -95,97 +88,140 @@ class CartController extends Controller
             }
         }
         
-        
-        
         // Créer une clé unique pour cette variante
         $cartKey = $product->id . '_' . $variantPrice . '_' . $variantSize;
         
-        // Utiliser updateOrCreate pour éviter les doublons et gérer les conditions de course
-        $existingItem = CartItem::where('user_id', Auth::id())
-            ->where('cart_key', $cartKey)
-            ->first();
-        
-        if ($existingItem) {
-            // Vérifier si la quantité totale ne dépasse pas le stock
-            if (($existingItem->quantity + $qty) > $availableStock) {
+        if (!Auth::check()) {
+            // Gestion via session pour invités
+            $cart = $request->session()->get('cart', []);
+            $existingQty = isset($cart[$cartKey]) ? (int)($cart[$cartKey]['quantity'] ?? 0) : 0;
+            
+            if (($existingQty + $qty) > $availableStock) {
                 return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
             }
             
-            // Mettre à jour la quantité
-            $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
+            $cart[$cartKey] = [
+                'product_id' => $product->id,
+                'quantity' => $existingQty + $qty,
+                'variant_price' => $variantPrice,
+                'variant_size' => $variantSize,
+            ];
+            $request->session()->put('cart', $cart);
+            
+            return back()->with('success', 'Produit ajouté au panier avec succès!');
         } else {
-            // Vérifier si la quantité ne dépasse pas le stock
-            if ($qty > $availableStock) {
-                return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
-            }
+            // Utilisateurs connectés: persister en base
+            $existingItem = CartItem::where('user_id', Auth::id())
+                ->where('cart_key', $cartKey)
+                ->first();
             
-            // Créer un nouvel item dans le panier
-            try {
-                CartItem::create([
-                    'user_id' => Auth::id(),
-                    'product_id' => $product->id,
-                    'quantity' => $qty,
-                    'variant_price' => $variantPrice,
-                    'variant_size' => $variantSize,
-                    'cart_key' => $cartKey
-                ]);
-            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-                // Si l'item existe déjà (condition de course), le récupérer et mettre à jour
-                $existingItem = CartItem::where('user_id', Auth::id())
-                    ->where('cart_key', $cartKey)
-                    ->first();
+            if ($existingItem) {
+                if (($existingItem->quantity + $qty) > $availableStock) {
+                    return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                }
+                $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
+            } else {
+                if ($qty > $availableStock) {
+                    return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                }
                 
-                if ($existingItem) {
-                    if (($existingItem->quantity + $qty) > $availableStock) {
-                        return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                try {
+                    CartItem::create([
+                        'user_id' => Auth::id(),
+                        'product_id' => $product->id,
+                        'quantity' => $qty,
+                        'variant_price' => $variantPrice,
+                        'variant_size' => $variantSize,
+                        'cart_key' => $cartKey
+                    ]);
+                } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                    $existingItem = CartItem::where('user_id', Auth::id())
+                        ->where('cart_key', $cartKey)
+                        ->first();
+                    if ($existingItem) {
+                        if (($existingItem->quantity + $qty) > $availableStock) {
+                            return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                        }
+                        $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
                     }
-                    $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
                 }
             }
+            
+            return back()->with('success', 'Produit ajouté au panier avec succès!');
         }
-        
-        
-        return back()->with('success', 'Produit ajouté au panier avec succès!');
     }
 
     public function remove(Request $request, string $cartKey): RedirectResponse
     {
         if (!Auth::check()) {
-            return redirect()->route('login.show');
+            // Invités: retirer de la session
+            $cart = $request->session()->get('cart', []);
+            if (isset($cart[$cartKey])) {
+                unset($cart[$cartKey]);
+                $request->session()->put('cart', $cart);
+                return back()->with('success', 'Produit retiré du panier.');
+            }
+            return back()->with('error', 'Produit non trouvé dans le panier.');
         }
         
+        // Authentifiés: retirer de la base
         $cartItem = CartItem::where('user_id', Auth::id())
             ->where('cart_key', $cartKey)
             ->first();
         
         if ($cartItem) {
             $cartItem->delete();
-        return back()->with('success', 'Produit retiré du panier.');
-    }
-
+            return back()->with('success', 'Produit retiré du panier.');
+        }
+        
         return back()->with('error', 'Produit non trouvé dans le panier.');
     }
 
     public function updateQuantity(Request $request, string $cartKey): RedirectResponse
     {
-        if (!Auth::check()) {
-            return redirect()->route('login.show');
-        }
-        
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1'
         ]);
         
+        if (!Auth::check()) {
+            // Invités: mettre à jour en session
+            $cart = $request->session()->get('cart', []);
+            if (!isset($cart[$cartKey])) {
+                return back()->with('error', 'Produit non trouvé dans le panier.');
+            }
+            $productId = $cart[$cartKey]['product_id'] ?? null;
+            $product = $productId ? Product::find($productId) : null;
+            if (!$product) {
+                return back()->with('error', 'Produit non trouvé.');
+            }
+            $targetQty = (int)$validated['quantity'];
+            $availableStock = $product->stock;
+            $variantSize = $cart[$cartKey]['variant_size'] ?? '';
+            if ($product->variants && is_array($product->variants) && $variantSize) {
+                foreach ($product->variants as $variant) {
+                    if ($variant['size'] === $variantSize) {
+                        $availableStock = $variant['stock'];
+                        break;
+                    }
+                }
+            }
+            if ($targetQty > $availableStock) {
+                return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+            }
+            $cart[$cartKey]['quantity'] = $targetQty;
+            $request->session()->put('cart', $cart);
+            return back()->with('success', 'Quantité mise à jour.');
+        }
+        
+        // Authentifiés: mettre à jour en base
         $cartItem = CartItem::where('user_id', Auth::id())
             ->where('cart_key', $cartKey)
             ->first();
         
         if ($cartItem) {
-            // Vérifier le stock disponible
             if ($validated['quantity'] > $cartItem->product->stock) {
                 return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $cartItem->product->stock . ' unités restantes).');
             }
-            
             $cartItem->update(['quantity' => $validated['quantity']]);
             return back()->with('success', 'Quantité mise à jour.');
         }

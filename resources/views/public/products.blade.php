@@ -19,6 +19,11 @@
     </div>
 
     <div class="products-container">
+        @if($products->isEmpty())
+            <div class="empty-state">
+                <p>Aucun produit disponible pour le moment.</p>
+            </div>
+        @else
         <div class="grid grid-3">
             @foreach($products as $product)
                 <div class="product-card">
@@ -170,6 +175,7 @@
                 </div>
             @endforeach
         </div>
+        @endif
     </div>
 </div>
 

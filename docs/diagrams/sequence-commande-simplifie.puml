@@ -1,0 +1,41 @@
+@startuml
+title Passer commande (simplifié) - parasel-bio
+
+actor Utilisateur as U
+participant "Interface Web" as FE
+participant CartController as CC
+participant Order as O
+participant PaymentController as PC
+participant PaymentService as PS
+participant "Fournisseur Paiement" as PP
+
+U -> FE: Aller à /commande
+FE -> CC: checkout()
+CC --> FE: Afficher checkout (panier, total)
+
+U -> FE: Soumettre commande
+FE -> CC: processOrder()
+CC -> O: Créer Order (en_attente)
+
+alt Paiement cash
+  CC --> FE: Confirmation commande
+else Paiement mobile
+  FE -> PC: initializePayment(order_id, méthode, téléphone)
+  PC -> PS: Initier paiement
+  PS -> PP: Demander paiement
+  PP -> PC: Callback statut
+  alt Succès
+    PC -> O: Mettre status = paid
+    PC --> FE: Confirmation
+  else Échec
+    PC --> FE: Erreur paiement
+  end
+end
+
+@enduml
+
+
+
+
+
+

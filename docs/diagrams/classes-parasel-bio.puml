@@ -1,0 +1,115 @@
+@startuml
+' Style proche VP
+skinparam shadowing false
+skinparam backgroundColor #E6F0FA
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #2F5597
+  ArrowColor #7A7A7A
+}
+
+title Diagramme de Classes - Application Web Parasel-Bio
+
+class User {
+  -id : int
+  +name : string
+  +first_name : string
+  +last_name : string
+  +email : string
+  +phone : string
+  -password : string
+  +role : string
+  --
+  +isAdmin() : bool
+  +orders() : HasMany
+}
+
+class Product {
+  -id : int
+  +name : string
+  +slug : string
+  +description : text
+  +image : string
+  +price : decimal
+  +variants : array
+  +stock : int
+  +is_featured : boolean
+  +status : string
+  --
+  +orderItems() : HasMany
+  +scopeActive() : Builder
+}
+
+class CartItem {
+  -id : int
+  +user_id : int
+  +product_id : int
+  +quantity : int
+  +variant_price : decimal
+  +variant_size : string
+  +cart_key : string
+  --
+  +user() : BelongsTo
+  +product() : BelongsTo
+}
+
+class Order {
+  -id : int
+  +user_id : int
+  +status : string
+  +total : decimal
+  +payment_method : string
+  +payment_reference : string
+  +delivery_address : string
+  +notes : text
+  --
+  +user() : BelongsTo
+  +items() : HasMany
+}
+
+class OrderItem {
+  -id : int
+  +order_id : int
+  +product_id : int
+  +quantity : int
+  +unit_price : decimal
+  +line_total : decimal
+  --
+  +order() : BelongsTo
+  +product() : BelongsTo
+}
+
+class Experience {
+  -id : int
+  +author_name : string
+  +content : text
+  +is_published : boolean
+  --
+}
+
+class Message {
+  -id : int
+  +name : string
+  +email : string
+  +phone : string
+  +content : text
+  --
+}
+
+' Relations
+User ||--o{ Order : "passe"
+User ||--|| CartItem : "possède"
+Order ||--o{ OrderItem : "contient"
+Product ||--o{ OrderItem : "dans"
+Product ||--o{ CartItem : "ajouté"
+User ||--o{ Message : "envoie"
+
+' Relations Admin (User avec role=admin)
+User ||--o{ Product : "gère"
+User ||--o{ Experience : "publie"
+
+@enduml
+
+
+
+

@@ -1,28 +1,19 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+
+// Migration volontairement neutralisée car une autre migration ajoute déjà la colonne `status`.
+// On garde ce fichier pour conserver l'historique, mais il ne fait aucune modification.
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->enum('status', ['active', 'inactive'])->default('active')->after('stock');
-        });
+        // noop (colonne `status` déjà gérée par 2025_01_15_000000_add_status_to_products_table)
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn('status');
-        });
+        // noop
     }
 };

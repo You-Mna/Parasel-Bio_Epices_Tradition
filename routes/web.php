@@ -33,16 +33,18 @@ Route::middleware('guest')->group(function () {
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
+// Panier accessible sans authentification (session pour invités)
+Route::get('/panier', [CartController::class, 'index'])->name('cart.index');
+Route::post('/panier/ajouter/{product}', [CartController::class, 'add'])->name('cart.add');
+Route::post('/panier/modifier-quantite/{cartKey}', [CartController::class, 'updateQuantity'])->name('cart.updateQuantity');
+Route::post('/panier/supprimer/{cartKey}', [CartController::class, 'remove'])->name('cart.remove');
+
 // Client area
 Route::middleware('auth')->group(function () {
     Route::get('/mon-compte', [ClientController::class, 'account'])->name('client.account');
     Route::get('/mes-commandes', [ClientController::class, 'orders'])->name('client.orders');
 
-    // Cart & checkout
-    Route::get('/panier', [CartController::class, 'index'])->name('cart.index');
-    Route::post('/panier/ajouter/{product}', [CartController::class, 'add'])->name('cart.add');
-    Route::post('/panier/modifier-quantite/{product}', [CartController::class, 'updateQuantity'])->name('cart.updateQuantity');
-    Route::post('/panier/supprimer/{cartKey}', [CartController::class, 'remove'])->name('cart.remove');
+    // Checkout (auth requis)
     Route::get('/commande', [CartController::class, 'checkout'])->name('checkout');
     Route::post('/commande', [CartController::class, 'processOrder'])->name('order.process');
     

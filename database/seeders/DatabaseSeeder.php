@@ -36,6 +36,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Parasel-Bio Marinade', 
                 'slug' => 'parasel-bio-marinade', 
                 'price' => 1000, 
+                'status' => 'active',
                 'variants' => [
                     ['size' => '115g', 'price' => 1000, 'stock' => 50],
                     ['size' => '275g', 'price' => 1500, 'stock' => 30],
@@ -48,6 +49,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Xladjê du Chef Paludier', 
                 'slug' => 'xladje-chef-paludier', 
                 'price' => 2000, 
+                'status' => 'active',
                 'variants' => [
                     ['size' => '850g', 'price' => 2000, 'stock' => 0]
                 ],
@@ -58,6 +60,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Arôme Parasel', 
                 'slug' => 'arome-parasel', 
                 'price' => 1500, 
+                'status' => 'active',
                 'variants' => [
                     ['size' => '33cl', 'price' => 1500, 'stock' => 25]
                 ],
@@ -68,6 +71,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'ParaStress', 
                 'slug' => 'parastress', 
                 'price' => 5000, 
+                'status' => 'active',
                 'variants' => [
                     ['size' => '850g', 'price' => 5000, 'stock' => 0]
                 ],
