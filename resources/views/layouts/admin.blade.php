@@ -9,7 +9,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/app.css?v={{ time() }}">
+    @php
+        $cssPath = public_path('css/app.css');
+        $cssV = is_file($cssPath) ? (string) filemtime($cssPath) : '1';
+    @endphp
+    <link rel="stylesheet" href="{{ url('/css/app.css') }}?v={{ $cssV }}">
 </head>
 <body class="admin-layout">
     <header class="site-header">
@@ -48,17 +52,41 @@
                 <a href="/admin/orders" class="{{ request()->is('admin/orders*') ? 'active' : '' }}">
                     <i class="fa-solid fa-shopping-bag"></i> Commandes
                 </a>
-                <a href="/admin/messages" class="{{ request()->is('admin/messages*') ? 'active' : '' }}">
-                    <i class="fa-solid fa-envelope"></i> Messages
+                <a href="/admin/shipments" class="{{ request()->is('admin/shipments*') || request()->is('admin/points-de-vente*') ? 'active' : '' }}">
+                    <i class="fa-solid fa-truck"></i> Expéditions
                 </a>
-                <a href="/admin/experiences" class="{{ request()->is('admin/experiences*') ? 'active' : '' }}">
-                    <i class="fa-solid fa-star"></i> Expériences
+
+                {{-- Menu déroulant Relation clients : Clients, Messages, Expériences --}}
+                @php
+                    $isRelationActive = request()->is('admin/users*')
+                        || request()->is('admin/messages*')
+                        || request()->is('admin/experiences*');
+                @endphp
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-dropdown-toggle {{ $isRelationActive ? 'active' : '' }}">
+                        <i class="fa-solid fa-users"></i> Relation clients
+                    </a>
+                    <div class="nav-dropdown-menu">
+                        <a href="/admin/messages" class="nav-dropdown-item {{ request()->is('admin/messages*') ? 'active' : '' }}">
+                            <i class="fa-solid fa-envelope"></i> Messages
+                        </a>
+                        <a href="/admin/experiences" class="nav-dropdown-item {{ request()->is('admin/experiences*') ? 'active' : '' }}">
+                            <i class="fa-solid fa-star"></i> Expériences
+                        </a>
+                        <a href="/admin/users" class="nav-dropdown-item {{ request()->is('admin/users*') ? 'active' : '' }}">
+                            <i class="fa-solid fa-address-book"></i> Clients
+                        </a>
+                    </div>
+                </div>
+                <a href="/admin/reports" class="{{ request()->is('admin/reports*') ? 'active' : '' }}">
+                    <i class="fa-solid fa-chart-pie"></i> Rapports
                 </a>
+                <span class="nav-separator" aria-hidden="true"></span>
                 
                 <!-- Dropdown Admin -->
                 <div class="nav-dropdown">
-                    <a href="#" class="nav-dropdown-toggle">
-                        <i class="fa-solid fa-user-shield"></i> Admin
+                    <a href="#" class="nav-dropdown-toggle" title="Mon espace admin" aria-label="Mon espace admin">
+                        <i class="fa-solid fa-user-shield"></i>
                     </a>
                     <div class="nav-dropdown-menu">
                         <div class="nav-dropdown-header">
@@ -99,11 +127,20 @@
                     <a href="/admin/orders" class="mobile-nav-item {{ request()->is('admin/orders*') ? 'active' : '' }}">
                         <i class="fa-solid fa-shopping-bag"></i> Commandes
                     </a>
+                    <a href="/admin/users" class="mobile-nav-item {{ request()->is('admin/users*') ? 'active' : '' }}">
+                        <i class="fa-solid fa-users"></i> Clients
+                    </a>
                     <a href="/admin/messages" class="mobile-nav-item {{ request()->is('admin/messages*') ? 'active' : '' }}">
                         <i class="fa-solid fa-envelope"></i> Messages
                     </a>
                     <a href="/admin/experiences" class="mobile-nav-item {{ request()->is('admin/experiences*') ? 'active' : '' }}">
                         <i class="fa-solid fa-star"></i> Expériences
+                    </a>
+                    <a href="/admin/shipments" class="mobile-nav-item {{ request()->is('admin/shipments*') || request()->is('admin/points-de-vente*') ? 'active' : '' }}">
+                        <i class="fa-solid fa-truck"></i> Expéditions
+                    </a>
+                    <a href="/admin/reports" class="mobile-nav-item {{ request()->is('admin/reports*') ? 'active' : '' }}">
+                        <i class="fa-solid fa-chart-pie"></i> Rapports
                     </a>
                     
                     <div class="mobile-nav-divider"></div>
@@ -140,6 +177,9 @@
     <main class="container main-content">
         @if(session('success'))
             <div class="alert success">{{ session('success') }}</div>
+        @endif
+        @if(session('error'))
+            <div class="alert error">{{ session('error') }}</div>
         @endif
         @if($errors->any())
             <div class="alert error">
@@ -201,6 +241,39 @@
     </footer>
     
     <script>
+        function attachSubmitLoaders(selector) {
+            var forms = document.querySelectorAll(selector);
+            forms.forEach(function(form) {
+                form.addEventListener('submit', function() {
+                    if (form.hasAttribute('data-manual-loader')) {
+                        return;
+                    }
+                    if (form.dataset.submitting === '1') {
+                        return;
+                    }
+                    form.dataset.submitting = '1';
+
+                    var submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+                    submitButtons.forEach(function(btn) {
+                        btn.disabled = true;
+                        btn.classList.add('is-loading');
+
+                        var loadingText = btn.getAttribute('data-loading-text') || 'Traitement...';
+                        if (!btn.dataset.originalHtml) {
+                            btn.dataset.originalHtml = btn.innerHTML;
+                        }
+
+                        if (btn.tagName === 'INPUT') {
+                            btn.value = loadingText;
+                            return;
+                        }
+
+                        btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>' + loadingText + '</span>';
+                    });
+                });
+            });
+        }
+
         // Gestion de la déconnexion avec confirmation élégante
         document.addEventListener('DOMContentLoaded', function() {
             const logoutForms = document.querySelectorAll('#logout-form');
@@ -211,6 +284,8 @@
                     showLogoutConfirmation(form);
                 });
             });
+
+            attachSubmitLoaders('form[method="POST"]:not(#logout-form):not(#mobile-logout-form)');
         });
 
         function showLogoutConfirmation(form) {
@@ -230,7 +305,7 @@
                         <div class="confirmation-message">Voulez-vous vraiment vous déconnecter ?</div>
                     </div>
                     <div class="confirmation-actions">
-                        <button class="btn-confirm" onclick="confirmLogout(true)">Oui</button>
+                        <button class="btn-confirm" onclick="confirmLogout(true, this)">Oui</button>
                         <button class="btn-cancel" onclick="confirmLogout(false)">Non</button>
                     </div>
                 </div>
@@ -335,8 +410,29 @@
             window.logoutForm = form;
         }
 
-        function confirmLogout(confirmed) {
+        function showLogoutLoader(text) {
+            if (document.getElementById('logout-submit-loader')) return;
+            var overlay = document.createElement('div');
+            overlay.id = 'logout-submit-loader';
+            overlay.style.cssText =
+                'position:fixed;inset:0;background:rgba(17,24,39,0.45);z-index:20000;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.innerHTML =
+                '<div style="background:#fff;border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:10px;max-width:92vw;">' +
+                    '<span class="btn-spinner" aria-hidden="true"></span>' +
+                    '<span style="font-weight:600;color:#111827;">' + text + '</span>' +
+                '</div>';
+            document.body.appendChild(overlay);
+        }
+
+        function confirmLogout(confirmed, confirmBtn) {
             if (confirmed && window.logoutForm) {
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.classList.add('is-loading');
+                    confirmBtn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Déconnexion...</span>';
+                }
+                showLogoutLoader('Déconnexion en cours...');
+
                 // Créer un nouveau token CSRF si nécessaire
                 const csrfToken = document.querySelector('meta[name="csrf-token"]');
                 if (csrfToken) {
@@ -358,6 +454,88 @@
                 window.logoutOverlay.remove();
             }
         }
+
+        // Positionner les dropdowns (Relation clients + Admin) en fixed, ouverture au clic
+        document.addEventListener('DOMContentLoaded', function() {
+            function positionDropdownMenu(trigger, menu) {
+                if (!trigger || !menu) return;
+                var rect = trigger.getBoundingClientRect();
+
+                // Position verticale : juste en dessous du bouton
+                var top = rect.bottom + 6;
+                // Empêcher de sortir de l'écran en bas
+                var maxTop = window.innerHeight - menu.offsetHeight - 8;
+                if (top > maxTop) {
+                    top = Math.max(8, maxTop);
+                }
+
+                // Position horizontale : alignée sous le bouton, centrée visuellement sous « Relation clients »
+                var left = rect.left + (rect.width / 4);
+                var maxLeft = window.innerWidth - menu.offsetWidth - 8;
+                if (left > maxLeft) {
+                    left = Math.max(8, maxLeft);
+                }
+
+                menu.style.top = top + 'px';
+                menu.style.left = left + 'px';
+                menu.style.right = 'auto';
+            }
+
+            var dropdowns = document.querySelectorAll('.admin-layout .nav-dropdown');
+
+            function closeAllDropdowns(exceptMenu) {
+                dropdowns.forEach(function(dropdown) {
+                    var m = dropdown.querySelector('.nav-dropdown-menu');
+                    if (m && m !== exceptMenu) {
+                        m.classList.remove('show-fixed');
+                        m.style.top = '';
+                        m.style.left = '';
+                        m.style.right = '';
+                    }
+                });
+            }
+
+            dropdowns.forEach(function(dropdown) {
+                var trigger = dropdown.querySelector('.nav-dropdown-toggle');
+                var menu = dropdown.querySelector('.nav-dropdown-menu');
+                if (!trigger || !menu) return;
+
+                trigger.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (menu.classList.contains('show-fixed')) {
+                        // Fermer si déjà ouvert
+                        menu.classList.remove('show-fixed');
+                        menu.style.top = '';
+                        menu.style.left = '';
+                        menu.style.right = '';
+                    } else {
+                        // Fermer les autres et ouvrir celui-ci
+                        closeAllDropdowns(menu);
+                        positionDropdownMenu(trigger, menu);
+                        menu.classList.add('show-fixed');
+                    }
+                });
+            });
+
+            // Fermer en cliquant en dehors
+            document.addEventListener('click', function() {
+                closeAllDropdowns(null);
+            });
+
+            // Repositionner si on redimensionne la fenêtre
+            window.addEventListener('resize', function() {
+                dropdowns.forEach(function(dropdown) {
+                    var trigger = dropdown.querySelector('.nav-dropdown-toggle');
+                    var menu = dropdown.querySelector('.nav-dropdown-menu');
+                    if (!trigger || !menu) return;
+                    if (menu.classList.contains('show-fixed')) {
+                        positionDropdownMenu(trigger, menu);
+                    }
+                });
+            });
+        });
 
         // Menu Hamburger Mobile
         document.addEventListener('DOMContentLoaded', function() {

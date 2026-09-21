@@ -11,7 +11,7 @@
             {{ session('message') }}
         </div>
     @endif
-    <form method="POST" action="{{ route('login') }}" class="form-grid">
+    <form method="POST" action="{{ route('login') }}" class="form-grid" id="login-form" data-manual-loader>
         @csrf
         <label>Email</label>
         <input name="email" type="email" required>
@@ -25,7 +25,7 @@
                 </svg>
             </button>
         </div>
-        <div class="actions full"><button class="btn">Se connecter</button></div>
+        <div class="actions full"><button class="btn" data-loading-text="Connexion en cours...">Se connecter</button></div>
     </form>
     <p style="margin-top:12px;color:#6b7280;">
         Vous n'avez pas encore de compte ?
@@ -38,6 +38,36 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    var loginForm = document.getElementById('login-form');
+    var loginButton = loginForm ? loginForm.querySelector('button[type="submit"], .btn') : null;
+
+    function showAuthOverlay(text) {
+        if (document.getElementById('auth-submit-loader')) return;
+        var overlay = document.createElement('div');
+        overlay.id = 'auth-submit-loader';
+        overlay.style.cssText =
+            'position:fixed;inset:0;background:rgba(17,24,39,0.45);z-index:20000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        overlay.innerHTML =
+            '<div style="background:#fff;border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:10px;max-width:92vw;">' +
+                '<span class="btn-spinner" aria-hidden="true"></span>' +
+                '<span style="font-weight:600;color:#111827;">' + text + '</span>' +
+            '</div>';
+        document.body.appendChild(overlay);
+    }
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', function() {
+            if (loginForm.dataset.submitting === '1') return;
+            loginForm.dataset.submitting = '1';
+            if (loginButton) {
+                loginButton.disabled = true;
+                loginButton.classList.add('is-loading');
+                loginButton.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Connexion en cours...</span>';
+            }
+            showAuthOverlay('Connexion en cours...');
+        });
+    }
+
     function togglePassword() {
         const passwordInput = document.getElementById('password');
         const toggleIcon = document.getElementById('toggle-icon');

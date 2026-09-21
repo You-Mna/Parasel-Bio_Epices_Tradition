@@ -42,9 +42,13 @@ class OrderStatusUpdated extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $statusLabels = [
-            'en_cours' => 'En cours',
-            'livree' => 'Livrée',
-            'annulee' => 'Annulée'
+            'payee_en_ligne' => 'Payée en ligne',
+            'payee' => 'Payée en ligne',
+            'a_la_livraison' => 'À la livraison',
+            'en_cours' => 'En attente paiement',
+            'livree_payee' => 'Livrée payée',
+            'livree' => 'Livrée payée',
+            'annulee' => 'Annulée',
         ];
 
         $oldStatusLabel = $statusLabels[$this->oldStatus] ?? $this->oldStatus;

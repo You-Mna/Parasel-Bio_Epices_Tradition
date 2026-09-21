@@ -10,12 +10,29 @@
 @else
     <div class="orders-grid">
         @foreach($orders as $order)
+            @php
+                // Numéro de commande pour ce client : 1 = première commande, 2 = deuxième, etc. (tri : plus récente en premier)
+                $orderNumber = $orders->total() - (($orders->currentPage() - 1) * $orders->perPage() + $loop->iteration - 1);
+            @endphp
             <div class="order-card">
                 <div class="order-header">
-                    <h3>Commande n° {{ $order->id }}</h3>
+                    <h3>Commande n° {{ $orderNumber }}</h3>
                     @php
-                        $badgeClass = $order->status === 'livree' ? 'success' : ($order->status === 'en_cours' ? 'warning' : 'danger');
-                        $label = $order->status === 'livree' ? 'Livrée' : ($order->status === 'en_cours' ? 'En cours' : 'Annulée');
+                        $badgeClass = match($order->status) {
+                            'payee_en_ligne', 'payee' => 'success',
+                            'a_la_livraison', 'en_cours' => 'warning',
+                            'livree_payee', 'livree' => 'success',
+                            'annulee' => 'danger',
+                            default => 'secondary',
+                        };
+                        $label = match($order->status) {
+                            'payee_en_ligne', 'payee' => 'Payée en ligne',
+                            'a_la_livraison' => 'Paiement à la livraison',
+                            'en_cours' => 'En attente paiement',
+                            'livree_payee', 'livree' => 'Livrée payée',
+                            'annulee' => 'Annulée',
+                            default => ucfirst(str_replace('_', ' ', $order->status)),
+                        };
                     @endphp
                     <span class="badge {{ $badgeClass }}">{{ $label }}</span>
                 </div>
@@ -31,12 +48,18 @@
                     @endforeach
                 </div>
                 <div class="order-total">
-                    <strong>Total : {{ number_format($order->total, 0, ',', ' ') }} FCFA</strong>
+                    @php
+                        // Calculer le total à partir des items si le total de la commande est à 0 ou null
+                        $calculatedTotal = $order->total > 0 ? $order->total : $order->items->sum('line_total');
+                    @endphp
+                    <strong>Total : {{ number_format($calculatedTotal, 0, ',', ' ') }} FCFA</strong>
                 </div>
             </div>
         @endforeach
     </div>
-    <div style="margin-top:16px;">{{ $orders->links() }}</div>
+    <div class="pagination-container">
+        {{ $orders->onEachSide(1)->links('components.client-pagination') }}
+    </div>
 @endif
 @endsection
 

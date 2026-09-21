@@ -8,7 +8,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/app.css?v={{ time() }}">
+    @php
+        $cssPath = public_path('css/app.css');
+        $cssV = is_file($cssPath) ? (string) filemtime($cssPath) : (string) config('app.version', '1');
+    @endphp
+    <link rel="stylesheet" href="{{ url('/css/app.css') }}?v={{ $cssV }}">
+    @if(request()->is('/'))
+    <link rel="preload" as="image" href="/images/hero-home-bg-sm.webp" media="(max-width: 768px)" fetchpriority="high">
+    <link rel="preload" as="image" href="/images/hero-home-bg.webp" media="(min-width: 769px)" fetchpriority="high">
+    @endif
     <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="{{ request()->is('/') ? 'home-page' : '' }} {{ !auth()->check() ? 'guest-mode' : '' }}">
@@ -46,9 +54,9 @@
                     <a href="/panier" class="{{ request()->is('panier*') ? 'active' : '' }}"><i class="fa-solid fa-basket-shopping"></i> Panier</a>
                     <a href="/mes-commandes" class="{{ request()->is('mes-commandes*') ? 'active' : '' }}"><i class="fa-solid fa-receipt"></i> Mes commandes</a>
                 @endauth
-                
+
                 @if(!auth()->check() || auth()->user()->role !== 'admin')
-                    <a href="/contact" class="{{ request()->is('contact*') ? 'active' : '' }}"><i class="fa-solid fa-envelope"></i> Contact</a>
+                    <a href="/contact" class="{{ request()->is('contact*') ? 'active' : '' }}"><i class="fa-solid fa-envelope"></i> Contactez-nous</a>
                 @endif
                 
                 @auth
@@ -112,7 +120,7 @@
                         </div>
                     @endif
                 @else
-                    <a href="{{ route('login.show') }}" class="{{ request()->is('login*') ? 'active' : '' }}"><i class="fa-solid fa-right-to-bracket"></i> S'authentifier</a>
+                    <a href="{{ route('login.show') }}" class="{{ request()->is('login*') ? 'active' : '' }}"><i class="fa-solid fa-right-to-bracket"></i> Connexion</a>
                 @endauth
             </nav>
             
@@ -134,10 +142,10 @@
                             <i class="fa-solid fa-receipt"></i> Mes commandes
                         </a>
                     @endauth
-                    
+
                     @if(!auth()->check() || auth()->user()->role !== 'admin')
                         <a href="/contact" class="mobile-nav-item {{ request()->is('contact*') ? 'active' : '' }}">
-                            <i class="fa-solid fa-envelope"></i> Contact
+                            <i class="fa-solid fa-envelope"></i> Contactez-nous
                         </a>
                     @endif
                     
@@ -183,7 +191,7 @@
                     @else
                         <div class="mobile-nav-divider"></div>
                         <a href="{{ route('login.show') }}" class="mobile-nav-item {{ request()->is('login*') ? 'active' : '' }}">
-                            <i class="fa-solid fa-right-to-bracket"></i> S'authentifier
+                            <i class="fa-solid fa-right-to-bracket"></i> Connexion
                         </a>
                     @endauth
                 </div>
@@ -272,6 +280,39 @@
     @stack('scripts')
     
     <script>
+        function attachSubmitLoaders(selector) {
+            var forms = document.querySelectorAll(selector);
+            forms.forEach(function(form) {
+                form.addEventListener('submit', function() {
+                    if (form.hasAttribute('data-manual-loader')) {
+                        return;
+                    }
+                    if (form.dataset.submitting === '1') {
+                        return;
+                    }
+                    form.dataset.submitting = '1';
+
+                    var submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+                    submitButtons.forEach(function(btn) {
+                        btn.disabled = true;
+                        btn.classList.add('is-loading');
+
+                        var loadingText = btn.getAttribute('data-loading-text') || 'Traitement...';
+                        if (!btn.dataset.originalHtml) {
+                            btn.dataset.originalHtml = btn.innerHTML;
+                        }
+
+                        if (btn.tagName === 'INPUT') {
+                            btn.value = loadingText;
+                            return;
+                        }
+
+                        btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>' + loadingText + '</span>';
+                    });
+                });
+            });
+        }
+
         // Gestion de la déconnexion avec confirmation élégante
         document.addEventListener('DOMContentLoaded', function() {
             const logoutForms = document.querySelectorAll('#logout-form');
@@ -282,6 +323,8 @@
                     showLogoutConfirmation(form);
                 });
             });
+
+            attachSubmitLoaders('form[method="POST"]:not(#logout-form):not(#mobile-logout-form)');
         });
 
         function showLogoutConfirmation(form) {
@@ -301,7 +344,7 @@
                         <div class="confirmation-message">Voulez-vous vraiment vous déconnecter ?</div>
                     </div>
                     <div class="confirmation-actions">
-                        <button class="btn-confirm" onclick="confirmLogout(true)">Oui</button>
+                        <button class="btn-confirm" onclick="confirmLogout(true, this)">Oui</button>
                         <button class="btn-cancel" onclick="confirmLogout(false)">Non</button>
                     </div>
                 </div>
@@ -406,8 +449,29 @@
             window.logoutForm = form;
         }
 
-        function confirmLogout(confirmed) {
+        function showLogoutLoader(text) {
+            if (document.getElementById('logout-submit-loader')) return;
+            var overlay = document.createElement('div');
+            overlay.id = 'logout-submit-loader';
+            overlay.style.cssText =
+                'position:fixed;inset:0;background:rgba(17,24,39,0.45);z-index:20000;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.innerHTML =
+                '<div style="background:#fff;border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:10px;max-width:92vw;">' +
+                    '<span class="btn-spinner" aria-hidden="true"></span>' +
+                    '<span style="font-weight:600;color:#111827;">' + text + '</span>' +
+                '</div>';
+            document.body.appendChild(overlay);
+        }
+
+        function confirmLogout(confirmed, confirmBtn) {
             if (confirmed && window.logoutForm) {
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.classList.add('is-loading');
+                    confirmBtn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Déconnexion...</span>';
+                }
+                showLogoutLoader('Déconnexion en cours...');
+
                 // Créer un nouveau token CSRF si nécessaire
                 const csrfToken = document.querySelector('meta[name="csrf-token"]');
                 if (csrfToken) {

@@ -66,7 +66,7 @@ class CartController extends Controller
 
     public function add(Request $request, Product $product): RedirectResponse
     {
-        // Accepte invités (session) et utilisateurs connectés (DB)
+        // Accepte invités (redirection login) et utilisateurs connectés (DB)
         $validated = $request->validate([
             'quantity' => 'nullable|integer|min:1',
             'variant_price' => 'nullable|numeric|min:0',
@@ -76,6 +76,20 @@ class CartController extends Controller
         $qty = $validated['quantity'] ?? 1;
         $variantPrice = $validated['variant_price'] ?? $product->price;
         $variantSize = $validated['variant_size'] ?? '';
+        
+        if (!Auth::check()) {
+            // Invité : mémoriser l'intention et rediriger vers la connexion
+            session([
+                'url.intended' => route('products.index', ['add_product' => $product->id]),
+                'add_to_cart_after_login' => [
+                    'product_id' => $product->id,
+                    'quantity' => $qty,
+                    'variant_price' => $variantPrice,
+                    'variant_size' => $variantSize,
+                ],
+            ]);
+            return redirect()->route('login.show')->with('info', 'Connectez-vous pour ajouter ce produit au panier.');
+        }
         
         // Déterminer le stock disponible (variante ou produit principal)
         $availableStock = $product->stock;
@@ -91,38 +105,19 @@ class CartController extends Controller
         // Créer une clé unique pour cette variante
         $cartKey = $product->id . '_' . $variantPrice . '_' . $variantSize;
         
-        if (!Auth::check()) {
-            // Gestion via session pour invités
-            $cart = $request->session()->get('cart', []);
-            $existingQty = isset($cart[$cartKey]) ? (int)($cart[$cartKey]['quantity'] ?? 0) : 0;
-            
-            if (($existingQty + $qty) > $availableStock) {
-                return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
-            }
-            
-            $cart[$cartKey] = [
-                'product_id' => $product->id,
-                'quantity' => $existingQty + $qty,
-                'variant_price' => $variantPrice,
-                'variant_size' => $variantSize,
-            ];
-            $request->session()->put('cart', $cart);
-            
-            return back()->with('success', 'Produit ajouté au panier avec succès!');
-        } else {
-            // Utilisateurs connectés: persister en base
-            $existingItem = CartItem::where('user_id', Auth::id())
+        // Utilisateurs connectés: persister en base
+        $existingItem = CartItem::where('user_id', Auth::id())
                 ->where('cart_key', $cartKey)
                 ->first();
             
             if ($existingItem) {
                 if (($existingItem->quantity + $qty) > $availableStock) {
-                    return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                    return redirect()->back(303)->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
                 }
                 $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
             } else {
                 if ($qty > $availableStock) {
-                    return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                    return redirect()->back(303)->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
                 }
                 
                 try {
@@ -140,18 +135,17 @@ class CartController extends Controller
                         ->first();
                     if ($existingItem) {
                         if (($existingItem->quantity + $qty) > $availableStock) {
-                            return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                            return redirect()->back(303)->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
                         }
                         $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
                     }
                 }
             }
-            
-            return back()->with('success', 'Produit ajouté au panier avec succès!');
-        }
+        
+        return redirect()->back(303)->with('success', 'Produit ajouté au panier avec succès!');
     }
 
-    public function remove(Request $request, string $cartKey): RedirectResponse
+    public function remove(Request $request, string $cartKey): mixed
     {
         if (!Auth::check()) {
             // Invités: retirer de la session
@@ -159,7 +153,13 @@ class CartController extends Controller
             if (isset($cart[$cartKey])) {
                 unset($cart[$cartKey]);
                 $request->session()->put('cart', $cart);
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => true]);
+                }
                 return back()->with('success', 'Produit retiré du panier.');
+            }
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'error' => 'Produit non trouvé dans le panier.'], 404);
             }
             return back()->with('error', 'Produit non trouvé dans le panier.');
         }
@@ -171,13 +171,19 @@ class CartController extends Controller
         
         if ($cartItem) {
             $cartItem->delete();
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true]);
+            }
             return back()->with('success', 'Produit retiré du panier.');
         }
         
+        if ($request->wantsJson()) {
+            return response()->json(['success' => false, 'error' => 'Produit non trouvé dans le panier.'], 404);
+        }
         return back()->with('error', 'Produit non trouvé dans le panier.');
     }
 
-    public function updateQuantity(Request $request, string $cartKey): RedirectResponse
+    public function updateQuantity(Request $request, string $cartKey): mixed
     {
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1'
@@ -187,11 +193,17 @@ class CartController extends Controller
             // Invités: mettre à jour en session
             $cart = $request->session()->get('cart', []);
             if (!isset($cart[$cartKey])) {
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => false, 'error' => 'Produit non trouvé dans le panier.'], 404);
+                }
                 return back()->with('error', 'Produit non trouvé dans le panier.');
             }
             $productId = $cart[$cartKey]['product_id'] ?? null;
             $product = $productId ? Product::find($productId) : null;
             if (!$product) {
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => false, 'error' => 'Produit non trouvé.'], 404);
+                }
                 return back()->with('error', 'Produit non trouvé.');
             }
             $targetQty = (int)$validated['quantity'];
@@ -206,10 +218,27 @@ class CartController extends Controller
                 }
             }
             if ($targetQty > $availableStock) {
-                return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).');
+                $message = 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).';
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => false, 'error' => $message], 422);
+                }
+                return back()->with('error', $message);
             }
             $cart[$cartKey]['quantity'] = $targetQty;
             $request->session()->put('cart', $cart);
+            if ($request->wantsJson()) {
+                $itemTotal = ((float) ($cart[$cartKey]['variant_price'] ?? 0)) * $targetQty;
+                $grandTotal = 0.0;
+                foreach ($cart as $row) {
+                    $grandTotal += ((float) ($row['variant_price'] ?? 0)) * ((int) ($row['quantity'] ?? 0));
+                }
+                return response()->json([
+                    'success' => true,
+                    'quantity' => $targetQty,
+                    'item_total' => $itemTotal,
+                    'grand_total' => $grandTotal,
+                ]);
+            }
             return back()->with('success', 'Quantité mise à jour.');
         }
         
@@ -219,17 +248,45 @@ class CartController extends Controller
             ->first();
         
         if ($cartItem) {
-            if ($validated['quantity'] > $cartItem->product->stock) {
-                return back()->with('error', 'La quantité demandée dépasse le stock disponible (' . $cartItem->product->stock . ' unités restantes).');
+            $product = $cartItem->product;
+            $availableStock = (int) $product->stock;
+            if ($product->variants && is_array($product->variants) && $cartItem->variant_size) {
+                foreach ($product->variants as $variant) {
+                    if (($variant['size'] ?? null) === $cartItem->variant_size) {
+                        $availableStock = (int) ($variant['stock'] ?? 0);
+                        break;
+                    }
+                }
+            }
+            if ($validated['quantity'] > $availableStock) {
+                $message = 'La quantité demandée dépasse le stock disponible (' . $availableStock . ' unités restantes).';
+                if ($request->wantsJson()) {
+                    return response()->json(['success' => false, 'error' => $message], 422);
+                }
+                return back()->with('error', $message);
             }
             $cartItem->update(['quantity' => $validated['quantity']]);
+            if ($request->wantsJson()) {
+                $qty = (int) $validated['quantity'];
+                $itemTotal = ((float) $cartItem->variant_price) * $qty;
+                $grandTotal = (float) CartItem::where('user_id', Auth::id())->sum(\DB::raw('variant_price * quantity'));
+                return response()->json([
+                    'success' => true,
+                    'quantity' => $qty,
+                    'item_total' => $itemTotal,
+                    'grand_total' => $grandTotal,
+                ]);
+            }
             return back()->with('success', 'Quantité mise à jour.');
         }
         
+        if ($request->wantsJson()) {
+            return response()->json(['success' => false, 'error' => 'Produit non trouvé dans le panier.'], 404);
+        }
         return back()->with('error', 'Produit non trouvé dans le panier.');
     }
 
-    public function checkout(): View
+    public function checkout(): mixed
     {
         if (!Auth::check()) {
             return redirect()->route('login.show');
@@ -257,7 +314,8 @@ class CartController extends Controller
         }
         
         $validated = $request->validate([
-            'payment_method' => 'required|in:cash,mtn_momo,moov_money,celtiis_money',
+            // Deux modes de paiement : paiement en ligne (FedaPay) ou paiement à la livraison
+            'payment_method' => 'required|in:cash,fedapay',
             'delivery_address' => 'required|string|max:255',
             'notes' => 'nullable|string|max:500'
         ]);
@@ -274,25 +332,52 @@ class CartController extends Controller
             return $item->variant_price * $item->quantity;
         });
         
-        // Créer la commande
+        // Statut automatique selon le mode de paiement
+        $initialStatus = $validated['payment_method'] === 'cash'
+            ? 'a_la_livraison'   // paiement à la livraison : en attente livraison (admin mettra "livrée payée" ou "annulée")
+            : 'en_cours';        // paiement en ligne : en attente FedaPay (webhook mettra "payée en ligne")
+
         $order = Order::create([
             'user_id' => Auth::id(),
-            'total_amount' => $total,
-            'status' => 'en_attente',
+            'total' => $total,
+            'status' => $initialStatus,
             'payment_method' => $validated['payment_method'],
-            'delivery_address' => $validated['delivery_address'],
-            'notes' => $validated['notes']
+            'delivery_address' => $validated['delivery_address'] ?? null,
+            'notes' => $validated['notes'] ?? null,
         ]);
         
-        // Créer les articles de commande
+        // Créer les articles de commande et mettre à jour les stocks
         foreach ($cartItems as $cartItem) {
-                    OrderItem::create([
-                        'order_id' => $order->id,
+            OrderItem::create([
+                'order_id' => $order->id,
                 'product_id' => $cartItem->product_id,
                 'quantity' => $cartItem->quantity,
                 'unit_price' => $cartItem->variant_price,
-                'line_total' => $cartItem->variant_price * $cartItem->quantity
+                'line_total' => $cartItem->variant_price * $cartItem->quantity,
             ]);
+
+            $product = $cartItem->product;
+            if ($product) {
+                // Gestion du stock pour les produits avec variantes
+                if ($product->variants && is_array($product->variants) && count($product->variants) > 0 && $cartItem->variant_size) {
+                    $variants = $product->variants;
+                    foreach ($variants as $index => $variant) {
+                        if (($variant['size'] ?? null) === $cartItem->variant_size) {
+                            $currentStock = (int) ($variant['stock'] ?? 0);
+                            $newStock = max(0, $currentStock - $cartItem->quantity);
+                            $variants[$index]['stock'] = $newStock;
+                            break;
+                        }
+                    }
+                    $product->variants = $variants;
+                    $product->stock = array_sum(array_column($variants, 'stock'));
+                } else {
+                    $currentStock = (int) ($product->stock ?? 0);
+                    $product->stock = max(0, $currentStock - $cartItem->quantity);
+                }
+
+                $product->save();
+            }
         }
         
         // Vider le panier seulement pour les paiements en espèces
@@ -307,7 +392,63 @@ class CartController extends Controller
                 'message' => 'Commande créée avec succès!'
             ]);
         }
-        
-        return redirect()->route('orders.show', $order)->with('success', 'Commande créée avec succès!');
+
+        // Soumission formulaire classique : paiement en ligne → page de paiement FedaPay
+        if ($validated['payment_method'] === 'fedapay') {
+            return redirect()->route('checkout.pay', $order);
+        }
+
+        return redirect()->route('client.orders')->with('success', 'Commande créée avec succès!');
+    }
+
+    /**
+     * Page de paiement en ligne (FedaPay) pour une commande déjà créée.
+     * Utilisée après redirection depuis le formulaire checkout (sans fetch, compatible mobile).
+     */
+    public function paymentPage(Order $order): View|RedirectResponse
+    {
+        if ($order->user_id !== Auth::id()) {
+            abort(403);
+        }
+        if (in_array($order->status, ['payee', 'payee_en_ligne', 'livree', 'livree_payee'], true)) {
+            return redirect()->route('client.orders')->with('success', 'Cette commande est déjà payée.');
+        }
+
+        $total = (int) $order->total;
+        $phoneForFedaPay = $this->normalizePhoneForFedaPay(Auth::user()->phone ?? '');
+        return view('checkout.pay', compact('order', 'total', 'phoneForFedaPay'));
+    }
+
+    /**
+     * Normalise n'importe quel format de numéro (Bénin) pour FedaPay :
+     * sortie toujours 10 chiffres commençant par 01 (ex. 0151805450).
+     *
+     * Exemples acceptés en entrée :
+     * - 0151805450, 0151 80 54 50, +229 01 51 80 54 50
+     * - 151805450 (9 chiffres) → 0151805450
+     * - 51805450 (8 chiffres)  → 0151805450
+     * - 2290151805450          → 0151805450
+     */
+    private function normalizePhoneForFedaPay(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone);
+
+        if (str_starts_with($digits, '229')) {
+            $digits = substr($digits, 3);
+        }
+
+        $len = strlen($digits);
+
+        if ($len >= 10) {
+            return substr($digits, -10);
+        }
+        if ($len === 9) {
+            return '0' . $digits;
+        }
+        if ($len === 8) {
+            return '01' . $digits;
+        }
+
+        return '';
     }
 }

@@ -21,10 +21,23 @@
         @if($lastOrder)
             <div class="order-card">
                 <div class="order-header">
-                    <h3>Commande n° {{ $lastOrder->id }}</h3>
+                    <h3>Commande n° {{ $lastOrderNumber }}</h3>
                     @php
-                        $badgeClass = $lastOrder->status === 'livree' ? 'success' : ($lastOrder->status === 'en_cours' ? 'warning' : 'danger');
-                        $label = $lastOrder->status === 'livree' ? 'Livrée' : ($lastOrder->status === 'en_cours' ? 'En cours' : 'Annulée');
+                        $badgeClass = match($lastOrder->status) {
+                            'payee_en_ligne', 'payee' => 'success',
+                            'a_la_livraison', 'en_cours' => 'warning',
+                            'livree_payee', 'livree' => 'success',
+                            'annulee' => 'danger',
+                            default => 'secondary',
+                        };
+                        $label = match($lastOrder->status) {
+                            'payee_en_ligne', 'payee' => 'Payée en ligne',
+                            'a_la_livraison' => 'Paiement à la livraison',
+                            'en_cours' => 'En attente paiement',
+                            'livree_payee', 'livree' => 'Livrée payée',
+                            'annulee' => 'Annulée',
+                            default => ucfirst(str_replace('_', ' ', $lastOrder->status)),
+                        };
                     @endphp
                     <span class="badge {{ $badgeClass }}">{{ $label }}</span>
                 </div>
@@ -40,7 +53,11 @@
                     @endforeach
                 </div>
                 <div class="order-total">
-                    <strong>Total : {{ number_format($lastOrder->total, 0, ',', ' ') }} FCFA</strong>
+                    @php
+                        // Calculer le total à partir des items si le total de la commande est à 0 ou null
+                        $calculatedTotal = $lastOrder->total > 0 ? $lastOrder->total : $lastOrder->items->sum('line_total');
+                    @endphp
+                    <strong>Total : {{ number_format($calculatedTotal, 0, ',', ' ') }} FCFA</strong>
                 </div>
                 <div class="order-actions">
                     <a class="btn" href="{{ route('client.orders') }}">Voir toutes mes commandes</a>

@@ -8,6 +8,45 @@
         <p class="dashboard-subtitle">Gérez votre boutique Parasel-Bio en toute simplicité</p>
     </div>
     <div class="dashboard-actions">
+        @php
+            $lowStockList = isset($lowStockProducts) ? $lowStockProducts : collect();
+            $lowStockCount = $lowStockList->count();
+        @endphp
+        <div class="alert-dropdown" id="lowStockDropdown">
+            <button type="button" class="btn-dashboard alert-toggle" id="lowStockToggle" onclick="toggleLowStockMenu(event)">
+                <i class="fa-solid fa-bell"></i>
+                <span>Alerte</span>
+                <span class="alert-count">{{ $lowStockCount }}</span>
+            </button>
+            <div class="alert-menu" id="lowStockMenu">
+                <div class="alert-menu-header">
+                    <span class="alert-menu-title">Stock faible</span>
+                    <span class="alert-menu-subtitle">
+                        @if($lowStockCount > 0)
+                            Produits sous 20&nbsp;% du stock initial
+                        @else
+                            Aucune alerte de stock pour le moment
+                        @endif
+                    </span>
+                </div>
+                @if($lowStockCount > 0)
+                    <ul class="alert-menu-list">
+                        @foreach($lowStockList as $product)
+                            @php
+                                $percent = $product->initial_stock > 0
+                                    ? round(($product->stock / $product->initial_stock) * 100)
+                                    : 0;
+                            @endphp
+                            <li class="alert-menu-item">
+                                <span class="alert-product-name">{{ $product->name }}</span>
+                                <span class="alert-product-meta">{{ $product->stock }} restants ({{ $percent }}&nbsp;%)</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+        </div>
+
         <a href="/" class="btn-dashboard">
             <i class="fa-solid fa-home"></i> Boutique principale
         </a>
@@ -27,7 +66,7 @@
         <div class="stat-value">{{ $stats['products'] }}</div>
         <p class="stat-description">Produits disponibles dans votre catalogue</p>
         <a href="{{ route('admin.products.index') }}" class="stat-action">
-            <i class="fa-solid fa-cog"></i> Gérer les produits
+            <i class="fa-solid fa-eye"></i> Voir les produits
         </a>
     </div>
 
@@ -57,7 +96,7 @@
         <div class="stat-value">{{ $stats['messages'] }}</div>
         <p class="stat-description">Messages clients en attente</p>
         <a href="{{ route('admin.messages.index') }}" class="stat-action">
-            <i class="fa-solid fa-eye"></i> Consulter
+            <i class="fa-solid fa-eye"></i> Voir les messages
         </a>
     </div>
 
@@ -72,7 +111,7 @@
         <div class="stat-value">{{ $stats['experiences'] }}</div>
         <p class="stat-description">Témoignages clients ({{ $stats['experiences_published'] }} publiés)</p>
         <a href="{{ route('admin.experiences.index') }}" class="stat-action">
-            <i class="fa-solid fa-cog"></i> Gérer les témoignages
+            <i class="fa-solid fa-eye"></i> Voir les témoignages
         </a>
     </div>
 </div>
@@ -88,8 +127,8 @@
         </div>
         <h3 class="stat-title">En cours</h3>
         <div class="stat-value">{{ $stats['orders_en_cours'] }}</div>
-        <p class="stat-description">Commandes en cours de traitement</p>
-        <span class="badge warning">{{ $stats['orders_en_cours'] }} en attente</span>
+        <p class="stat-description">Commandes prêtes à être livrées</p>
+        <span class="badge warning">{{ $stats['orders_en_cours'] }} en cours</span>
     </div>
 
     <!-- Commandes livrées -->
@@ -117,7 +156,23 @@
         <p class="stat-description">Commandes annulées</p>
         <span class="badge danger">{{ $stats['orders_annulee'] }} annulées</span>
     </div>
-
 </div>
-@endsection
 
+<script>
+function toggleLowStockMenu(event) {
+    event.stopPropagation();
+    var menu = document.getElementById('lowStockMenu');
+    if (!menu) return;
+    menu.classList.toggle('is-open');
+}
+
+document.addEventListener('click', function (e) {
+    var menu = document.getElementById('lowStockMenu');
+    var dropdown = document.getElementById('lowStockDropdown');
+    if (!menu || !dropdown) return;
+    if (!dropdown.contains(e.target)) {
+        menu.classList.remove('is-open');
+    }
+});
+</script>
+@endsection

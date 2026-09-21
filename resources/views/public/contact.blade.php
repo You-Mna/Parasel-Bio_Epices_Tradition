@@ -43,7 +43,7 @@
                         <div class="contact-details">
                             <h3>Facebook</h3>
                             <p class="contact-description">Suivez nos actualités et découvrez nos nouveautés culinaires</p>
-                            <a href="https://www.facebook.com/Parasel-Bio-100080471611097" target="_blank" class="contact-link">Parasel-Bio</a>
+                            <a href="https://web.facebook.com/profile.php?id=100064262105685" target="_blank" class="contact-link">Parasel-Bio</a>
                         </div>
                     </div>
                     

@@ -43,7 +43,9 @@ class DatabaseSeeder extends Seeder
                     ['size' => '850g', 'price' => 5000, 'stock' => 20]
                 ],
                 'stock' => 50, 
-                'description' => 'Le sel assaisonné aux 17 épices et légumes naturels bio pour sublimer vos plats.','is_featured' => true
+                'description' => 'Le sel assaisonné aux 17 épices et légumes naturels bio pour sublimer vos plats.',
+                'image' => 'parasel115g.jpg',
+                'is_featured' => true
             ],
             [
                 'name' => 'Xladjê du Chef Paludier', 
@@ -51,7 +53,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 2000, 
                 'status' => 'active',
                 'variants' => [
-                    ['size' => '850g', 'price' => 2000, 'stock' => 0]
+                    ['size' => '850g', 'price' => 2000, 'stock' => 30]
                 ],
                 'stock' => 0, 
                 'description' => 'Le sel gris, enrichi de feuilles de moringa pour les personnes diabétiques.','is_featured' => true
@@ -62,7 +64,7 @@ class DatabaseSeeder extends Seeder
                 'price' => 1500, 
                 'status' => 'active',
                 'variants' => [
-                    ['size' => '33cl', 'price' => 1500, 'stock' => 25]
+                    ['size' => '33cl', 'price' => 1500, 'stock' => 0]
                 ],
                 'stock' => 25, 
                 'description' => 'Arôme naturel salé aux 17 épices et légumes de Parasel-bio Marinade.','is_featured' => false

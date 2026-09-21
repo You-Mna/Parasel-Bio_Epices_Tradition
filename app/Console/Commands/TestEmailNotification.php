@@ -45,14 +45,14 @@ class TestEmailNotification extends Command
         // Créer une commande de test
         $order = Order::create([
             'user_id' => $user->id,
-            'status' => 'en_cours',
+            'status' => 'a_la_livraison',
             'total' => 5000,
             'payment_method' => 'mobile_money',
             'payment_reference' => 'TEST123'
         ]);
 
         // Envoyer la notification
-        $user->notify(new OrderStatusUpdated($order, 'en_cours', 'livree'));
+        $user->notify(new OrderStatusUpdated($order, 'a_la_livraison', 'livree_payee'));
 
         $this->info("Email de test envoyé à {$email}");
     }

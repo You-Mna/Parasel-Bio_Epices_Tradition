@@ -4,7 +4,7 @@
 <div class="auth-page">
 <div class="card form-narrow centered-block">
     <h2>Inscription</h2>
-    <form method="POST" action="{{ route('register') }}" class="form-grid cols-2">
+    <form method="POST" action="{{ route('register') }}" class="form-grid cols-2" id="register-form" data-manual-loader>
         @csrf
         <div>
             <label>Prénom <span style="color: #dc2626;">*</span></label>
@@ -46,7 +46,7 @@
                 </button>
             </div>
         </div>
-        <div class="actions full"><button class="btn">Créer mon compte</button></div>
+        <div class="actions full"><button class="btn" data-loading-text="Création du compte...">Créer mon compte</button></div>
     </form>
     <p style="margin-top:12px;color:#6b7280;">
         Déjà un compte ?
@@ -59,6 +59,36 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    var registerForm = document.getElementById('register-form');
+    var registerButton = registerForm ? registerForm.querySelector('button[type="submit"], .btn') : null;
+
+    function showAuthOverlay(text) {
+        if (document.getElementById('auth-submit-loader')) return;
+        var overlay = document.createElement('div');
+        overlay.id = 'auth-submit-loader';
+        overlay.style.cssText =
+            'position:fixed;inset:0;background:rgba(17,24,39,0.45);z-index:20000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        overlay.innerHTML =
+            '<div style="background:#fff;border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:10px;max-width:92vw;">' +
+                '<span class="btn-spinner" aria-hidden="true"></span>' +
+                '<span style="font-weight:600;color:#111827;">' + text + '</span>' +
+            '</div>';
+        document.body.appendChild(overlay);
+    }
+
+    if (registerForm) {
+        registerForm.addEventListener('submit', function() {
+            if (registerForm.dataset.submitting === '1') return;
+            registerForm.dataset.submitting = '1';
+            if (registerButton) {
+                registerButton.disabled = true;
+                registerButton.classList.add('is-loading');
+                registerButton.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Création du compte...</span>';
+            }
+            showAuthOverlay('Création du compte...');
+        });
+    }
+
     function togglePassword(inputId) {
         const passwordInput = document.getElementById(inputId);
         const toggleIcon = document.getElementById('toggle-icon-' + inputId);

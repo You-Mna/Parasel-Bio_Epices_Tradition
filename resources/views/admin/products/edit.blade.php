@@ -160,7 +160,7 @@
                     @endif
 
                     <div class="form-actions">
-                        <button type="submit" class="btn-admin primary">
+                        <button type="submit" class="btn-admin success">
                             <i class="fa-solid fa-save"></i> Mettre à jour
                         </button>
                         <a href="{{ route('admin.products.index') }}" class="btn-admin secondary">
@@ -284,6 +284,16 @@
         </div>
 
         <!-- Statut du stock -->
+        @php
+            $hasVariants2 = $product->variants && is_array($product->variants) && count($product->variants) > 0;
+            $variantStock2 = 0;
+            if ($hasVariants2) {
+                foreach ($product->variants as $variantTmp) {
+                    $variantStock2 += (int) ($variantTmp['stock'] ?? 0);
+                }
+            }
+            $effectiveStock = $hasVariants2 ? $variantStock2 : (int) $product->stock;
+        @endphp
         <div class="action-card">
             <div class="card-header">
                 <h3 class="card-title">
@@ -292,17 +302,30 @@
                 </h3>
             </div>
             <div class="card-content">
+                @php
+                    $hasVariants = $product->name === 'Parasel-Bio Marinade'
+                        && $product->variants
+                        && is_array($product->variants)
+                        && count($product->variants) > 0;
+                    $variantStock = 0;
+                    if ($hasVariants) {
+                        foreach ($product->variants as $variant) {
+                            $variantStock += (int) ($variant['stock'] ?? 0);
+                        }
+                    }
+                    $effectiveStock = $hasVariants ? $variantStock : (int) $product->stock;
+                @endphp
                 <div class="status-display">
-                    <span class="status-badge {{ $product->stock > 0 ? 'status-active' : 'status-inactive' }}">
-                        <i class="fa-solid {{ $product->stock > 0 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
-                        {{ $product->stock > 0 ? 'En stock' : 'En rupture' }}
+                    <span class="status-badge {{ $effectiveStock > 0 ? 'status-active' : 'status-inactive' }}">
+                        <i class="fa-solid {{ $effectiveStock > 0 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
+                        {{ $effectiveStock > 0 ? 'En stock' : 'En rupture' }}
                     </span>
                 </div>
                 <form method="POST" action="{{ route('admin.products.toggle-stock', $product) }}" class="toggle-stock-form">
                     @csrf
-                    <button type="submit" class="btn-toggle-stock {{ $product->stock > 0 ? 'set-inactive' : 'set-active' }}">
-                        <i class="fa-solid {{ $product->stock > 0 ? 'fa-minus-circle' : 'fa-plus-circle' }}"></i>
-                        {{ $product->stock > 0 ? 'Mettre en rupture' : 'Remettre en stock' }}
+                    <button type="submit" class="btn-toggle-stock {{ $effectiveStock > 0 ? 'set-inactive' : 'set-active' }}">
+                        <i class="fa-solid {{ $effectiveStock > 0 ? 'fa-minus-circle' : 'fa-plus-circle' }}"></i>
+                        {{ $effectiveStock > 0 ? 'Mettre en rupture' : 'Remettre en stock' }}
                     </button>
                 </form>
             </div>
@@ -396,7 +419,7 @@
                 </div>
 
                 <div class="form-actions">
-                    <button type="submit" class="btn-admin primary">
+                    <button type="submit" class="btn-admin success">
                         <i class="fa-solid fa-save"></i> Mettre à jour
                     </button>
                     <a href="{{ route('admin.products.index') }}" class="btn-admin secondary">

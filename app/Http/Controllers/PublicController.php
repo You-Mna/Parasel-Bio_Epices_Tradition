@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CartItem;
 use App\Models\Product;
 use App\Models\Experience;
 use App\Models\Message;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class PublicController extends Controller
@@ -14,24 +16,58 @@ class PublicController extends Controller
     public function home(): View
     {
         $experiences = Experience::where('is_published', true)->latest()->take(5)->get();
-        return view('public.home', compact('experiences'));
+        $homeProducts = Product::active()
+            ->orderedForCatalog()
+            ->take(4)
+            ->get();
+
+        return view('public.home', compact('experiences', 'homeProducts'));
     }
 
-    public function products(): View
+    public function products(Request $request): View|RedirectResponse
     {
-        $products = Product::where('status', 'active')->orderByRaw("
-            CASE 
-                WHEN name = 'Parasel-Bio Marinade' THEN 1
-                WHEN name = 'Xwladjê du Chef Paludier' THEN 2
-                WHEN name = 'Arôme Parasel' THEN 3
-                WHEN name = 'ParaStress' THEN 4
-                ELSE 5
-            END
-        ")->paginate(12);
+        // Après connexion : ajouter au panier le produit mémorisé puis rediriger vers la page produit (ancrage)
+        if (Auth::check() && $request->has('add_product')) {
+            $productId = (int) $request->get('add_product');
+            $data = session('add_to_cart_after_login');
+            if ($data && (int)($data['product_id'] ?? 0) === $productId) {
+                $product = Product::where('status', 'active')->find($productId);
+                if ($product) {
+                    $qty = (int)($data['quantity'] ?? 1);
+                    $variantPrice = $data['variant_price'] ?? $product->price;
+                    $variantSize = $data['variant_size'] ?? '';
+                    $cartKey = $product->id . '_' . $variantPrice . '_' . $variantSize;
+                    $existingItem = CartItem::where('user_id', Auth::id())->where('cart_key', $cartKey)->first();
+                    if ($existingItem) {
+                        $existingItem->update(['quantity' => $existingItem->quantity + $qty]);
+                    } else {
+                        CartItem::create([
+                            'user_id' => Auth::id(),
+                            'product_id' => $product->id,
+                            'quantity' => $qty,
+                            'variant_price' => $variantPrice,
+                            'variant_size' => $variantSize,
+                            'cart_key' => $cartKey,
+                        ]);
+                    }
+                    session()->forget('add_to_cart_after_login');
+                    return redirect()->to(route('products.index') . '#product-' . $productId)
+                        ->with('success', 'Produit ajouté au panier.');
+                }
+                session()->forget('add_to_cart_after_login');
+            }
+        }
+
+        $products = Product::active()->orderedForCatalog()->paginate(12);
         return view('public.products', compact('products'));
     }
 
 
+
+    public function pointsDistribution(): View
+    {
+        return view('public.points-distribution');
+    }
 
     public function contact(): View
     {
@@ -56,7 +92,10 @@ class PublicController extends Controller
             'content' => "Sujet: " . $data['subject'] . "\n\nMessage: " . $data['message'],
         ]);
         
-        return back()->with('success', 'Merci pour votre message ! Notre équipe vous répondra dans les plus brefs délais.');
+        return redirect()
+            ->route('contact')
+            ->setStatusCode(303)
+            ->with('success', 'Merci pour votre message ! Notre équipe vous répondra dans les plus brefs délais.');
     }
 }
 

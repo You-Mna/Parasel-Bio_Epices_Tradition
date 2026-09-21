@@ -28,10 +28,12 @@
             <div class="cart-content">
                 <div class="cart-header-info">
                     <div class="cart-stats">
-                        <span class="items-count">Produits sélectionnés</span>
-                        <span class="total-preview">{{ count($cartItems) }}</span>
-                                    </div>
-                                </div>
+                        <span class="items-count">
+                            Produits sélectionnés
+                            <span class="items-count-number">({{ count($cartItems) }})</span>
+                        </span>
+                    </div>
+                </div>
                                 
                 <div class="cart-items-modern">
                     @foreach($cartItems as $item)
@@ -74,7 +76,14 @@
                                             <line x1="5" y1="12" x2="19" y2="12"></line>
                                         </svg>
                                     </button>
-                                    <span class="qty-display">{{ $item['quantity'] }}</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="99"
+                                        class="qty-display qty-input"
+                                        value="{{ $item['quantity'] }}"
+                                        onchange="updateQuantityDirect('{{ $item['cart_key'] }}', this)"
+                                    >
                                     <button type="button" class="qty-btn" onclick="updateQuantity('{{ $item['cart_key'] }}', 1)">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -116,7 +125,7 @@
                             <i class="fas fa-shopping-bag"></i>
                             Continuer vos achats
                         </a>
-                        <a href="{{ route('checkout') }}" class="btn btn-primary btn-checkout">
+                        <a href="{{ route('checkout') }}" class="btn btn-primary btn-checkout" id="passer-commande-btn">
                             <i class="fas fa-arrow-right"></i>
                             Passer commande
                         </a>
@@ -129,43 +138,109 @@
 </div>
 
 <script>
+function setCartRowLoading(itemEl, isLoading) {
+    if (!itemEl) return;
+    itemEl.classList.toggle('is-row-loading', !!isLoading);
+    var controls = itemEl.querySelectorAll('.qty-btn, .qty-input, .remove-btn');
+    controls.forEach(function(ctrl) {
+        ctrl.disabled = !!isLoading;
+    });
+}
+
 function updateQuantity(cartKey, change) {
     var itemEl = document.querySelector('[data-cart-key="' + cartKey + '"]');
     var display = itemEl ? itemEl.querySelector('.qty-display') : null;
     if (display) {
-        var currentValue = parseInt(display.textContent);
+        var currentValue = parseInt(display.tagName === 'INPUT' ? display.value : display.textContent);
         var newValue = currentValue + change;
         if (newValue >= 1 && newValue <= 99) {
-            var unit = parseFloat(itemEl.getAttribute('data-unit-price')) || 0;
-            var oldTotal = unit * currentValue;
-            var newTotal = unit * newValue;
-            var totalChange = newTotal - oldTotal;
-            
-            // Mettre à jour l'affichage immédiatement
-            display.textContent = newValue;
-            
-            // Recalculer le total de la ligne immédiatement côté client
-            var totalAmountEl = itemEl.querySelector('.total-price');
-            if (totalAmountEl) {
-                totalAmountEl.textContent = newTotal.toLocaleString('fr-FR') + ' FCFA';
-            }
-            
-            // Mettre à jour le total général
-            updateGrandTotal(totalChange);
-            
-            // Envoyer la requête au serveur
+            setCartRowLoading(itemEl, true);
+            // Envoyer la requête au serveur (AJAX)
             fetch('/panier/modifier-quantite/' + cartKey, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 },
                 body: JSON.stringify({ quantity: newValue })
+            }).then(function(response) {
+                return response.json();
+            }).then(function(data) {
+                if (!data || !data.success) {
+                    // Message d'erreur si disponible
+                    if (data && data.error) {
+                        alert(data.error);
+                    }
+                    return;
+                }
+
+                // Mise à jour optimiste seulement si le serveur a confirmé
+                if (display.tagName === 'INPUT') {
+                    display.value = data.quantity;
+                } else {
+                    display.textContent = data.quantity;
+                }
+
+                var totalAmountEl = itemEl.querySelector('.total-price');
+                if (totalAmountEl) {
+                    totalAmountEl.textContent = (data.item_total || 0).toLocaleString('fr-FR') + ' FCFA';
+                }
+
+                // Mettre à jour le total général
+                var grand = document.querySelector('.total-amount');
+                if (grand) {
+                    grand.textContent = (data.grand_total || 0).toLocaleString('fr-FR') + ' FCFA';
+                }
             }).finally(function() {
-                recalcCartTotal();
+                setCartRowLoading(itemEl, false);
+            }).catch(function() {
+                alert("Impossible de mettre à jour la quantité. Vérifiez votre connexion.");
             });
         }
     }
+}
+
+function updateQuantityDirect(cartKey, inputEl) {
+    var raw = parseInt(inputEl.value, 10);
+    if (isNaN(raw)) {
+        inputEl.value = 1;
+        raw = 1;
+    }
+    if (raw < 1) raw = 1;
+    if (raw > 99) raw = 99;
+    // remettre la valeur normalisée dans le champ
+    inputEl.value = raw;
+    var itemEl = document.querySelector('[data-cart-key="' + cartKey + '"]');
+    setCartRowLoading(itemEl, true);
+    // Envoyer la valeur directement (sans delta)
+    fetch('/panier/modifier-quantite/' + cartKey, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({ quantity: raw })
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (!data || !data.success) {
+            if (data && data.error) alert(data.error);
+            return;
+        }
+        inputEl.value = data.quantity;
+        if (itemEl) {
+            var totalAmountEl = itemEl.querySelector('.total-price');
+            if (totalAmountEl) totalAmountEl.textContent = (data.item_total || 0).toLocaleString('fr-FR') + ' FCFA';
+        }
+        var grand = document.querySelector('.total-amount');
+        if (grand) grand.textContent = (data.grand_total || 0).toLocaleString('fr-FR') + ' FCFA';
+    }).finally(function() {
+        setCartRowLoading(itemEl, false);
+    }).catch(function() {
+        alert("Impossible de mettre à jour la quantité. Vérifiez votre connexion.");
+    });
 }
 
 function removeItem(cartKey) {
@@ -187,7 +262,7 @@ function showRemoveConfirmation(cartKey) {
                 <div class="confirmation-message">Voulez-vous supprimer ce produit du panier ?</div>
             </div>
             <div class="confirmation-actions">
-                <button class="btn-confirm" onclick="confirmRemove(true, '${cartKey}')">Oui</button>
+                <button class="btn-confirm" onclick="confirmRemove(true, '${cartKey}', this)">Oui</button>
                 <button class="btn-cancel" onclick="confirmRemove(false, '${cartKey}')">Non</button>
             </div>
         </div>
@@ -292,7 +367,13 @@ function showRemoveConfirmation(cartKey) {
     window.removeOverlay = overlay;
 }
 
-function confirmRemove(confirmed, cartKey) {
+function confirmRemove(confirmed, cartKey, confirmBtn) {
+    if (confirmed && confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.classList.add('is-loading');
+        confirmBtn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Suppression...</span>';
+    }
+
     // Supprimer le toast et l'overlay
     if (window.removeToast) {
         window.removeToast.remove();
@@ -545,6 +626,31 @@ function confirmAction(confirmed) {
     
     pendingCartKey = null;
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var checkoutBtn = document.getElementById('passer-commande-btn');
+    var checkoutSection = document.querySelector('.checkout-section');
+    var checkoutLinks = document.querySelectorAll('.checkout-actions a');
+    if (!checkoutBtn) return;
+
+    checkoutBtn.addEventListener('click', function(e) {
+        if (checkoutBtn.dataset.loading === '1') {
+            e.preventDefault();
+            return;
+        }
+
+        checkoutBtn.dataset.loading = '1';
+        checkoutBtn.classList.add('is-loading');
+        checkoutBtn.setAttribute('aria-disabled', 'true');
+        checkoutBtn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>Chargement du checkout...</span>';
+        if (checkoutSection) {
+            checkoutSection.classList.add('is-row-loading');
+        }
+        checkoutLinks.forEach(function(link) {
+            link.style.pointerEvents = 'none';
+        });
+    });
+});
 </script>
 @endsection
 

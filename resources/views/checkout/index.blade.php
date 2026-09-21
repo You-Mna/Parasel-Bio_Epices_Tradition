@@ -65,37 +65,25 @@
             <div class="checkout-form-section">
                 <h2 class="form-title">Informations de paiement</h2>
                 
-                <form id="checkout-form" class="checkout-form">
+                <form id="checkout-form" class="checkout-form" action="{{ route('order.process') }}" method="POST" data-manual-loader>
                     @csrf
+                    <input type="hidden" name="delivery_address" value="Adresse de livraison à confirmer">
+                    <input type="hidden" name="notes" value="">
                     
                     <div class="form-group">
                         <label for="payment_method" class="form-label">Mode de paiement *</label>
                         <select name="payment_method" id="payment_method" class="form-select" required>
-                            <option value="mtn_momo">MTN</option>
-                            <option value="moov_money">Moov</option>
-                            <option value="celtiis_money">Celtiis</option>
+                            <option value="fedapay">Paiement en ligne</option>
                             <option value="cash">Paiement à la livraison</option>
                         </select>
                         <span class="error-message" id="payment_method_error"></span>
                     </div>
 
-                    <div class="form-group" id="phone_group" style="display: none;">
-                        <label for="phone_number" class="form-label">Numéro de téléphone *</label>
-                        <input type="tel" name="phone_number" id="phone_number" class="form-input" placeholder="Ex: 0701234567">
-                        <span class="error-message" id="phone_number_error"></span>
-                    </div>
-
-                    <div class="form-group" id="reference_group" style="display: none;">
-                        <label for="payment_reference" class="form-label">Référence de paiement *</label>
-                        <input type="text" name="payment_reference" id="payment_reference" class="form-input" placeholder="Ex: TXN123456789">
-                        <span class="error-message" id="payment_reference_error"></span>
-                    </div>
-
                     <div class="form-actions">
                         <a href="{{ route('cart.index') }}" class="btn btn-secondary">Retour au panier</a>
-                        <button type="submit" class="btn btn-primary btn-large" id="submit-btn">
+                        <button type="submit" class="btn btn-primary btn-large" id="submit-btn" data-loading-text="Traitement...">
                             <i class="fas fa-check"></i>
-                            <span class="btn-text">Confirmer la commande</span>
+                            <span class="btn-text">Confirmer et payer</span>
                             <span class="btn-loading" style="display: none;">
                                 <i class="fas fa-spinner fa-spin"></i>
                                 Traitement...
@@ -110,225 +98,42 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const paymentMethod = document.getElementById('payment_method');
-    const phoneGroup = document.getElementById('phone_group');
-    const referenceGroup = document.getElementById('reference_group');
-    const phoneInput = document.getElementById('phone_number');
-    const referenceInput = document.getElementById('payment_reference');
     const checkoutForm = document.getElementById('checkout-form');
     const submitBtn = document.getElementById('submit-btn');
-    const btnText = submitBtn.querySelector('.btn-text');
-    const btnLoading = submitBtn.querySelector('.btn-loading');
+    const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
+    const btnLoading = submitBtn ? submitBtn.querySelector('.btn-loading') : null;
 
-    // Store order ID for payment processing
-    let currentOrderId = null;
+    function clearErrors() {
+        document.querySelectorAll('.error-message').forEach(el => { el.textContent = ''; });
+    }
+    function showError(elementId, message) {
+        const el = document.getElementById(elementId);
+        if (el) el.textContent = message;
+    }
 
-    paymentMethod.addEventListener('change', function() {
-        const value = this.value;
-        
-        if (value === 'mtn_momo' || value === 'moov_money' || value === 'orange_money') {
-            phoneGroup.style.display = 'block';
-            referenceGroup.style.display = 'none'; // Hide reference field for API payments
-            phoneInput.required = true;
-            referenceInput.required = false;
-        } else if (value === 'cash') {
-            phoneGroup.style.display = 'none';
-            referenceGroup.style.display = 'none';
-            phoneInput.required = false;
-            referenceInput.required = false;
-            phoneInput.value = '';
-            referenceInput.value = '';
-        } else {
-            phoneGroup.style.display = 'none';
-            referenceGroup.style.display = 'none';
-            phoneInput.required = false;
-            referenceInput.required = false;
-            phoneInput.value = '';
-            referenceInput.value = '';
-        }
-    });
-
-    checkoutForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
+    checkoutForm.addEventListener('submit', function(e) {
         const formData = new FormData(checkoutForm);
         const paymentMethodValue = formData.get('payment_method');
-        
-        // Clear previous errors
         clearErrors();
-        
-        // Validate form
         if (!paymentMethodValue) {
+            e.preventDefault();
             showError('payment_method_error', 'Veuillez sélectionner un mode de paiement');
             return;
         }
 
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('is-loading');
+            if (btnText) btnText.style.display = 'none';
+            if (btnLoading) btnLoading.style.display = 'inline-flex';
+        }
+
         if (paymentMethodValue === 'cash') {
-            // Handle cash payment
-            await processCashPayment(formData);
+            document.querySelector('input[name="notes"]').value = 'Paiement à la livraison';
         } else {
-            // Handle mobile money payment
-            await processMobileMoneyPayment(formData);
+            document.querySelector('input[name="notes"]').value = 'Paiement en ligne (FedaPay)';
         }
     });
-
-    async function processCashPayment(formData) {
-        try {
-            setLoading(true);
-            
-            const response = await fetch('{{ route("order.process") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    payment_method: 'cash',
-                    delivery_address: 'Adresse de livraison à confirmer',
-                    notes: 'Paiement à la livraison',
-                    phone_number: '',
-                    payment_reference: ''
-                })
-            });
-
-            const result = await response.json();
-            
-            if (response.ok) {
-                window.location.href = '{{ route("client.orders") }}';
-            } else {
-                showError('payment_method_error', result.message || 'Erreur lors de la création de la commande');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            showError('payment_method_error', 'Erreur de connexion');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    async function processMobileMoneyPayment(formData) {
-        try {
-            setLoading(true);
-            
-            // First, create the order
-            const orderResponse = await fetch('{{ route("order.process") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    payment_method: formData.get('payment_method'),
-                    delivery_address: 'Adresse de livraison à confirmer',
-                    notes: 'Paiement mobile money',
-                    phone_number: formData.get('phone_number'),
-                    payment_reference: ''
-                })
-            });
-
-            const orderResult = await orderResponse.json();
-            
-            if (!orderResponse.ok) {
-                showError('payment_method_error', orderResult.message || 'Erreur lors de la création de la commande');
-                return;
-            }
-
-            currentOrderId = orderResult.order_id;
-
-            // Then initialize payment
-            const paymentResponse = await fetch('{{ route("payment.initialize") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                },
-                body: JSON.stringify({
-                    order_id: currentOrderId,
-                    payment_method: formData.get('payment_method'),
-                    phone_number: formData.get('phone_number')
-                })
-            });
-
-            const paymentResult = await paymentResponse.json();
-            
-            if (paymentResponse.ok && paymentResult.success) {
-                // Redirect to payment URL or show payment instructions
-                if (paymentResult.payment_url) {
-                    window.location.href = paymentResult.payment_url;
-                } else {
-                    // Show payment instructions
-                    showPaymentInstructions(paymentResult);
-                }
-            } else {
-                showError('payment_method_error', paymentResult.error || 'Erreur lors de l\'initialisation du paiement');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            showError('payment_method_error', 'Erreur de connexion');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    function showPaymentInstructions(paymentData) {
-        // Create a modal or alert with payment instructions
-        const instructions = `
-            <div class="payment-instructions-modal">
-                <h3>Instructions de paiement</h3>
-                <p>Votre commande a été créée avec succès !</p>
-                <p><strong>Référence:</strong> ${paymentData.reference}</p>
-                <p><strong>Montant:</strong> {{ number_format($total, 0, ',', ' ') }} FCFA</p>
-                <p>Veuillez effectuer le paiement via votre application mobile money.</p>
-                <button onclick="checkPaymentStatus('${paymentData.transaction_id}')" class="btn btn-primary">
-                    Vérifier le paiement
-                </button>
-            </div>
-        `;
-        
-        // You can implement a modal here or redirect to a payment status page
-        alert('Paiement initialisé ! Référence: ' + paymentData.reference);
-    }
-
-    function clearErrors() {
-        document.querySelectorAll('.error-message').forEach(el => {
-            el.textContent = '';
-        });
-    }
-
-    function showError(elementId, message) {
-        const errorElement = document.getElementById(elementId);
-        if (errorElement) {
-            errorElement.textContent = message;
-        }
-    }
-
-    function setLoading(loading) {
-        if (loading) {
-            btnText.style.display = 'none';
-            btnLoading.style.display = 'inline';
-            submitBtn.disabled = true;
-        } else {
-            btnText.style.display = 'inline';
-            btnLoading.style.display = 'none';
-            submitBtn.disabled = false;
-        }
-    }
-
-    // Global function to check payment status
-    window.checkPaymentStatus = async function(transactionId) {
-        try {
-            const response = await fetch(`{{ route("payment.status", ":id") }}`.replace(':id', transactionId));
-            const result = await response.json();
-            
-            if (result.success && result.status === 'approved') {
-                window.location.href = '{{ route("client.orders") }}';
-            } else {
-                alert('Paiement en cours... Veuillez patienter.');
-            }
-        } catch (error) {
-            console.error('Error checking payment status:', error);
-        }
-    };
 });
 </script>
 @endsection

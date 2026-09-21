@@ -11,7 +11,7 @@
         <a href="{{ route('products.index') }}" target="_blank" class="btn-admin secondary">
             <i class="fas fa-external-link-alt"></i> Voir la boutique
         </a>
-        <a href="{{ route('admin.products.create') }}" class="btn-admin primary">
+        <a href="{{ route('admin.products.create') }}" class="btn-admin success">
             <i class="fa-solid fa-plus"></i> Ajouter un produit
         </a>
     </div>
@@ -36,11 +36,25 @@
             <div class="product-info-admin">
                 <h3 class="product-name-admin">{{ $product->name }}</h3>
                 
-                <!-- Statut du stock -->
+                <!-- Statut du stock : seules les variantes de Parasel-Bio Marinade sont prises en compte -->
+                        @php
+                            $hasVariants = $product->name === 'Parasel-Bio Marinade'
+                                && $product->variants
+                                && is_array($product->variants)
+                                && count($product->variants) > 0;
+                            $variantStock = 0;
+                            if ($hasVariants) {
+                                foreach ($product->variants as $variant) {
+                                    $variantStock += (int) ($variant['stock'] ?? 0);
+                                }
+                            }
+                            $productStock = (int) ($product->stock ?? 0);
+                            $effectiveStock = $hasVariants ? $variantStock : $productStock;
+                        @endphp
                         <div class="stock-status-admin">
-                            <span class="stock-badge {{ $product->stock > 0 ? 'in-stock' : 'out-of-stock' }}">
-                                <i class="fa-solid {{ $product->stock > 0 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
-                                {{ $product->stock > 0 ? 'En stock' : 'En rupture' }}
+                            <span class="stock-badge {{ $effectiveStock > 0 ? 'in-stock' : 'out-of-stock' }}">
+                                <i class="fa-solid {{ $effectiveStock > 0 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
+                                {{ $effectiveStock > 0 ? 'En stock' : 'En rupture' }}
                             </span>
                         </div>
 
@@ -60,8 +74,8 @@
 
 <!-- Pagination -->
 @if($products->hasPages())
-    <div class="admin-pagination">
-        {{ $products->links() }}
+    <div class="admin-pagination admin-table-pagination">
+        {{ $products->links('vendor.pagination.admin') }}
     </div>
 @endif
 @endsection

@@ -68,7 +68,7 @@
                 </div>
 
                 <div class="form-actions">
-                    <button type="submit" class="btn-admin primary">
+                    <button type="submit" class="btn-admin success" data-loading-text="Création en cours...">
                         <i class="fa-solid fa-plus"></i> Créer le produit
                     </button>
                     <a href="{{ route('admin.products.index') }}" class="btn-admin secondary">

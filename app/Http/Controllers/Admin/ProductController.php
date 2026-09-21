@@ -43,6 +43,12 @@ class ProductController extends Controller
         }
         
         $data['is_featured'] = (bool)($data['is_featured'] ?? false);
+
+        // Initialiser le stock de départ lors de la création
+        if (isset($data['stock'])) {
+            $data['initial_stock'] = (int) $data['stock'];
+        }
+
         Product::create($data);
         return redirect()->route('admin.products.index')->with('success', 'Produit ajouté');
     }
@@ -80,13 +86,15 @@ class ProductController extends Controller
         // Gérer les variantes
         if ($request->has('variants') && !empty($request->variants)) {
             $variants = [];
+            $totalStock = 0;
             foreach ($request->variants as $index => $variant) {
                 if (!empty($variant['size']) && !empty($variant['price']) && isset($variant['stock'])) {
                     $variantData = [
                         'size' => $variant['size'],
                         'price' => $variant['price'],
-                        'stock' => $variant['stock'] ?? 0
+                        'stock' => (int) ($variant['stock'] ?? 0),
                     ];
+                    $totalStock += $variantData['stock'];
                     
                     // Gérer l'upload de l'image de la variante
                     if ($request->hasFile("variants.{$index}.image")) {
@@ -98,19 +106,30 @@ class ProductController extends Controller
                         // Garder l'image existante si pas de nouveau upload
                         $variantData['image'] = $variant['image'];
                     }
-                    
+
                     $variants[] = $variantData;
                 }
             }
             $data['variants'] = $variants;
+            // Synchroniser le stock global avec la somme des stocks de variantes
+            $data['stock'] = $totalStock;
+        } else {
+            // Produits sans variantes (Xladjê, Arôme, ParaStress) : stock vient du formulaire
+            $data['stock'] = (int) $request->input('stock', $product->stock ?? 0);
         }
         
         $data['is_featured'] = (bool)($data['is_featured'] ?? false);
+
+        // Si le stock est mis à jour manuellement dans le back-office,
+        // on considère que c'est la nouvelle référence de stock initial.
+        if (isset($data['stock'])) {
+            $data['initial_stock'] = (int) $data['stock'];
+        }
         
         // Si le prix du produit principal est modifié et que le produit a des variantes,
         // mettre à jour aussi le prix de toutes les variantes
-        if (isset($data['price']) && $product->variants && is_array($product->variants)) {
-            $variants = $product->variants;
+        if (isset($data['price']) && ($product->variants && is_array($product->variants))) {
+            $variants = $data['variants'] ?? $product->variants;
             foreach ($variants as $index => $variant) {
                 $variants[$index]['price'] = $data['price'];
             }
@@ -149,34 +168,38 @@ class ProductController extends Controller
     public function toggleStock(Product $product)
     {
         try {
-            // Toggle le statut du stock
-            if ($product->stock > 0) {
+            $hasVariants = $product->variants && is_array($product->variants) && count($product->variants) > 0;
+            $effectiveStock = 0;
+            if ($hasVariants) {
+                foreach ($product->variants as $variant) {
+                    $effectiveStock += (int) ($variant['stock'] ?? 0);
+                }
+            } else {
+                $effectiveStock = (int) $product->stock;
+            }
+
+            // Toggle le statut du stock (basé sur le stock effectif)
+            if ($effectiveStock > 0) {
                 // Mettre en rupture
                 $product->update(['stock' => 0]);
-                
-                // Si le produit a des variantes, mettre aussi toutes les variantes en rupture
-                if ($product->variants && is_array($product->variants)) {
+                if ($hasVariants) {
                     $variants = $product->variants;
                     foreach ($variants as $index => $variant) {
                         $variants[$index]['stock'] = 0;
                     }
                     $product->update(['variants' => $variants]);
                 }
-                
                 $message = 'Produit mis en rupture de stock';
             } else {
-                // Remettre en stock (on peut définir une quantité par défaut)
-                $product->update(['stock' => 10]); // Quantité par défaut
-                
-                // Si le produit a des variantes, remettre aussi toutes les variantes en stock
-                if ($product->variants && is_array($product->variants)) {
+                // Remettre en stock (quantité par défaut)
+                $product->update(['stock' => 10]);
+                if ($hasVariants) {
                     $variants = $product->variants;
                     foreach ($variants as $index => $variant) {
-                        $variants[$index]['stock'] = 10; // Quantité par défaut
+                        $variants[$index]['stock'] = 10;
                     }
                     $product->update(['variants' => $variants]);
                 }
-                
                 $message = 'Produit remis en stock';
             }
 

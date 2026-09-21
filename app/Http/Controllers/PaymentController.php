@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\PaymentService;
+use App\Models\CartItem;
 use App\Models\Order;
+use App\Services\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -38,9 +39,9 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // Check if order is already paid
-            if ($order->status === 'paid') {
-                return response()->json(['error' => 'Order already paid'], 400);
+            // Vérifier si la commande est déjà payée / traitée
+            if (in_array($order->status, ['payee', 'payee_en_ligne', 'livree', 'livree_payee'], true)) {
+                return response()->json(['error' => 'Order already paid or processed'], 400);
             }
 
             // Map payment method to provider
@@ -73,7 +74,7 @@ class PaymentController extends Controller
                     'payment_method' => $validated['payment_method'],
                     'payment_reference' => $paymentResult['reference'],
                     'payment_transaction_id' => $paymentResult['transaction_id'],
-                    'status' => 'pending_payment',
+                    // On garde le statut métier tel quel ici (il restera "en_cours")
                 ]);
 
                 return response()->json([
@@ -87,7 +88,6 @@ class PaymentController extends Controller
             return response()->json(['error' => 'Payment initialization failed'], 500);
 
         } catch (\Exception $e) {
-            Log::error('Payment initialization error: ' . $e->getMessage());
             return response()->json(['error' => 'Payment initialization failed'], 500);
         }
     }
@@ -115,24 +115,27 @@ class PaymentController extends Controller
             $verificationResult = $this->paymentService->verifyPayment($transactionId);
 
             if ($verificationResult['success'] && $verificationResult['status'] === 'approved') {
-                // Payment successful
+                // Paiement en ligne réussi : statut automatique "payée en ligne"
                 $order->update([
-                    'status' => 'paid',
+                    'status' => 'payee_en_ligne',
                     'payment_status' => 'completed',
                     'paid_at' => now(),
                 ]);
 
-                // Clear cart
+                // Clear cart (session + DB pour cet utilisateur)
                 session()->forget('cart');
+                if ($order->user_id) {
+                    CartItem::where('user_id', $order->user_id)->delete();
+                }
 
                 // Send notification to user
-                $order->user->notify(new \App\Notifications\OrderStatusUpdated($order));
+                $order->user->notify(new \App\Notifications\OrderStatusUpdated($order, 'en_cours', 'payee_en_ligne'));
 
                 return redirect()->route('client.orders')->with('success', 'Paiement effectué avec succès !');
             } else {
-                // Payment failed
+                // Paiement échoué : la commande est considérée comme "annulee"
                 $order->update([
-                    'status' => 'payment_failed',
+                    'status' => 'annulee',
                     'payment_status' => 'failed',
                 ]);
 
@@ -140,7 +143,6 @@ class PaymentController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Payment callback error: ' . $e->getMessage());
             return redirect()->route('cart.index')->with('error', 'Erreur lors du traitement du paiement');
         }
     }
@@ -170,7 +172,6 @@ class PaymentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Payment status check error: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to check payment status'], 500);
         }
     }
@@ -216,40 +217,58 @@ class PaymentController extends Controller
     public function handleWebhook(Request $request): JsonResponse
     {
         try {
-            // Verify webhook signature if needed
-            $signature = $request->header('X-Webhook-Signature');
-            $payload = $request->getContent();
+            $payload = $request->all();
 
-            // Process webhook based on provider
-            $event = $request->input('event');
-            $transactionId = $request->input('transaction.id') ?? $request->input('data.id');
+            // Nom de l'événement (FedaPay envoie "name" ou "event", ex: "transaction.approved")
+            $event = $request->input('event') ?? $request->input('name');
+
+            // Récupérer l'ID de commande depuis les metadata (plusieurs structures possibles selon FedaPay)
+            $orderIdFromMetadata = $request->input('entity.custom_metadata.order_id')
+                ?? $request->input('data.transaction.custom_metadata.order_id')
+                ?? $request->input('entity.metadata.order_id');
 
             if ($event === 'transaction.approved' || $event === 'charge.completed') {
-                $order = Order::where('payment_transaction_id', $transactionId)->first();
-                
-                if ($order && $order->status !== 'paid') {
+                $order = null;
+
+                if ($orderIdFromMetadata) {
+                    $order = Order::find((int) $orderIdFromMetadata);
+                }
+
+
+                if ($order && !in_array($order->status, ['payee', 'payee_en_ligne', 'livree', 'livree_payee'], true)) {
+                    $oldStatus = $order->status;
                     $order->update([
-                        'status' => 'paid',
-                        'payment_status' => 'completed',
-                        'paid_at' => now(),
+                        'status' => 'payee_en_ligne',
                     ]);
 
-                    // Clear cart
+                    // Vider le panier (session + DB) pour l'utilisateur lié à la commande
                     session()->forget('cart');
+                    if ($order->user_id) {
+                        CartItem::where('user_id', $order->user_id)->delete();
+                    }
 
-                    // Send notification
-                    $order->user->notify(new \App\Notifications\OrderStatusUpdated($order));
+                    // Envoyer la notification si le user est bien chargé
+                    if ($order->user) {
+                        $order->user->notify(new \App\Notifications\OrderStatusUpdated($order, $oldStatus, 'payee_en_ligne'));
+                    }
                 }
             }
 
             return response()->json(['success' => true]);
 
         } catch (\Exception $e) {
-            Log::error('Webhook processing error: ' . $e->getMessage());
             return response()->json(['error' => 'Webhook processing failed'], 500);
         }
     }
 }
+
+
+
+
+
+
+
+
 
 
 
